@@ -1,71 +1,69 @@
-# 📖 BookFlow — Frontend
+# 📖 BookFlow — Backend API
 
-Bem-vindo ao repositório frontend do **BookFlow**, a interface da plataforma completa de empréstimo e venda de livros digitais.
+Bem-vindo ao repositório do backend do **BookFlow**, uma API REST desenvolvida em **.NET 10** que gerencia uma plataforma completa de empréstimo e venda de livros digitais.
 
-Esta aplicação foi construída com um forte foco em **User Experience (UX)** e **User Interface (UI)**, com um design minimalista (Preto, Branco e tons de cinza) inspirado no Notion, transições suaves e responsividade total. 
+Esta aplicação implementa fluxos financeiros, autenticação segura baseada em roles e controle de acesso estrito. O projeto nasceu de uma ideia de CRUD de empréstimos, mas evoluiu para uma plataforma robusta de marketplace para dois perfis independentes: **Editora** e **Cliente**.
 
-## 🚀 Tecnologias e Stack
+## 🚀 Stack Tecnológica
 
-- **React 19**
-- **TypeScript** — Tipagem estática forte, espelhando os DTOs do backend.
-- **Tailwind CSS** — Estilização utilitária focada em alta produtividade e consistência.
-- **Axios** — Cliente HTTP configurado com interceptadores globais.
-- **React Router Dom** — Navegação e proteção de rotas (Protected Routes).
-- **Lucide React** — Ícones modernos e limpos.
+- **.NET 10** — Web API
+- **Entity Framework Core** — ORM moderno com abordagem Code-First.
+- **SQL Server** — Banco de dados relacional (via pacotes Microsoft.EntityFrameworkCore.SqlServer).
+- **JWT (JSON Web Tokens)** — Autenticação e autorização por claims.
+- **BCrypt.Net-Next** — Hash e validação segura de senhas.
+- **Rate Limiting** — Proteção nativa no middleware do ASP.NET.
 
-## 🛡️ Decisões de Segurança e Arquitetura
+## 🏗️ Arquitetura e Padrões
 
-1. **Autenticação Segura:** 
-   O token JWT não é salvo no `localStorage`. Ele é mantido apenas em memória dentro do `AuthContext`. Isso elimina vetores de ataque **XSS (Cross-Site Scripting)** visando roubo de tokens.
-   
-2. **Interceptor Global (Axios):**
-   Qualquer requisição que retorne HTTP `401 Unauthorized` ou `403 Forbidden` é automaticamente interceptada. O usuário é desconectado de forma segura e redirecionado para a tela de login.
+O projeto segue princípios **SOLID** e foi estruturado com o **Repository Pattern** em uma Arquitetura em Camadas (Clean Architecture) focada no domínio:
 
-3. **Rotas Protegidas por Perfil (Role-Based):**
-   A plataforma possui dois mundos completamente isolados: **Cliente** e **Editora**. O componente `<ProtectedRoute>` avalia o perfil antes de renderizar a tela. Se um Cliente tentar acessar a URL do Dashboard da Editora, ele recebe uma página customizada de "Acesso Negado".
+- **Controllers:** Camada de apresentação da API, recebem requisições HTTP e extraem dados de segurança do Token.
+- **Services:** Concentram toda a regra de negócio, validando estoques, orquestrando fluxos e lidando com exceções.
+- **Repositories:** Abstraem o acesso a dados via Entity Framework Core.
+- **DTOs:** Objetos independentes para separar os modelos de banco de dados das requisições da web, evitando vazamento de dados (over-posting).
 
-4. **Componentização Modular:**
-   Os componentes de UI (Botões, Inputs, Cards, Modais, Paginação) foram criados "do zero" utilizando Tailwind, sem depender de bibliotecas pesadas de componentes como Material UI. Isso mantém o bundle leve e o design 100% autoral.
+## 🛡️ Destaques de Segurança e Regras de Negócio
 
-## 💡 Funcionalidades Principais
+1. **Identity & Role-Based Access Control:** 
+   Clientes e Editoras possuem papéis distintos. A extração de identificadores sensíveis (como `idEditora`) é feita **sempre** direto do Token JWT (usando `User.FindFirst`), impossibilitando falhas de IDOR caso o frontend envie um payload adulterado.
 
-### Visão da Editora 🏢
-- **Métricas:** Dashboard estilo _fintech_ com um gráfico SVG próprio exibindo receita acumulada, total de livros vendidos e top performers da editora.
-- **Carteira:** Acompanhamento do saldo atual em tempo real e solicitação de saque de receitas (Vendas).
-- **Meus Livros:** Gestão do catálogo próprio, onde a Editora decide título, preço, quantidade em estoque e se o livro é **emprestável** ou não.
+2. **Fluxo Financeiro Fechado:**
+   - Cada compra desencadeia *duas* movimentações cruzadas em carteiras de diferentes donos: **Débito** no Cliente e **Crédito** na Editora.
+   - O banco de dados possui uma `Check Constraint` (`CK_Carteira_Dono`) garantindo que nenhuma carteira pertença, acidentalmente, a dois atores.
 
-### Visão do Cliente 👤
-- **Catálogo:** Exploração dos livros disponíveis com busca em tempo real por título.
-- **Carteira:** Depósito de saldo fictício para possibilitar compras.
-- **Compras & Empréstimos:** Compra direta com débito em carteira ou empréstimo gratuito.
-- **Meus Empréstimos:** Painel para visualizar empréstimos ativos, histórico de devolução e atrasos (com aviso claro de multa de R$ 3,00/dia em caso de vencimento).
+3. **Rate Limiting (Prevenção de Brute Force):**
+   Endpoints de login (`/login`, `/login/editora`) utilizam o _Fixed Window Limiter_ nativo do .NET para barrar picos de tentativas de senhas incorretas, mantendo as contas financeiras seguras.
 
-## 💻 Como rodar o projeto localmente
+4. **Paginação Segura:**
+   A API conta com um `PaginacaoRequestDto` interceptando pesquisas (como as de Livros) com um `Range` máximo de **50 registros**, protegendo o banco contra consultas exaustivas (DDoS no nível da base).
 
-1. Clone o repositório e navegue até a pasta do frontend:
-   ```bash
-   cd bookflow-front
+## 📊 Endpoints Principais
+
+A API é segmentada nos seguintes fluxos lógicos:
+
+- **Auth:** Login de Cliente e Editora (`POST /api/cliente/login`, `POST /api/editora/login`)
+- **Carteira:** Saques, depósitos e extratos independentes. Multas por atraso de empréstimo (R$ 3,00/dia) são debitadas de modo automático.
+- **Livro:** Cadastro/Atualização para editoras; Busca com filtro e paginação aberta para clientes.
+- **Compra & Empréstimo:** Criação de transações que validam estoque, limites da carteira e geram históricos correspondentes.
+- **Métricas:** Painel exclusivo para Editoras exibindo receita, total vendido e top performers.
+
+## 💻 Como Rodar o Projeto (Local)
+
+1. Clone o repositório.
+2. Certifique-se de ter o **.NET 10 SDK** instalado em sua máquina.
+3. Configure a _Connection String_ do SQL Server em seu `appsettings.json` ou `appsettings.Development.json`:
+   ```json
+   "ConnectionStrings": {
+     "DefaultConnection": "Server=SEU_SERVIDOR;Database=BookFlowDb;Trusted_Connection=True;TrustServerCertificate=True"
+   }
    ```
-
-2. Instale as dependências:
-   ```bash
-   npm install
+4. Aplique as migrações no banco de dados. No **Package Manager Console** do Visual Studio, rode:
+   ```powershell
+   Update-Database
    ```
-
-3. Configure as variáveis de ambiente:
-   - Crie um arquivo `.env` na raiz do projeto (se já não existir).
-   - Defina a URL da sua API local. Exemplo:
-   ```env
-   REACT_APP_API_URL=https://localhost:7157/api
-   ```
-
-4. Inicie o servidor de desenvolvimento:
-   ```bash
-   npm start
-   ```
-
-5. Abra [http://localhost:3000](http://localhost:3000) no seu navegador.
+   *Ou via CLI:* `dotnet ef database update`
+5. Inicie a aplicação (via VS ou `dotnet run`). A API abrirá na porta configurada, expondo o Swagger para testes imediatos.
 
 ---
 
-_Feito com muita dedicação. Cada detalhe visual e de arquitetura foi pensado para entregar uma aplicação que seja tão bonita de usar quanto é segura nos bastidores._
+_Desenvolvido com foco na integridade das regras de negócio, proteção contra manipulação de dados e arquitetura sustentável._
